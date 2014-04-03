@@ -1,4 +1,6 @@
 #include "termcolor.h"
+#include "log.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -40,14 +42,14 @@ int include_test(const char *testname, int argc, const char **argv)
     if (argc == 1)
         return 1; /* No hay especificaciones */
 
-    if (!strncasecmp("include", argv[1], strlen(testname)))
+    if (!strncasecmp("include", argv[0], strlen(testname)))
         is_including = 1;
-    else if (!strncasecmp("exclude", argv[1], strlen(testname)))
+    else if (!strncasecmp("exclude", argv[0], strlen(testname)))
         is_including = 0;
     else
         fprintf(stderr, "include/exclude not recognized. Assuming 'exclude'\n");
 
-    for(i = 2; i < argc; i++)
+    for(i = 1; i < argc; i++)
     	if(!strncasecmp(testname, argv[i], strlen(testname)))
     		return is_including;
 
@@ -59,8 +61,18 @@ int main(int argc, const char **argv)
     time_t t;
     int success = 0, error = 0, run = 0;
     time(&t);
+    const char **spec_start = argv + 1;
 
-     if (signal(SIGSEGV, _critical_stop_handler))
+    if(argc >= 2 && !strncasecmp("-v", argv[1], 2))
+    {
+        slog_set_level(LOG_DEBUG);
+        spec_start++;
+        argc--;
+    }
+    
+    slog_set_output(stderr);
+
+    if (signal(SIGSEGV, _critical_stop_handler))
         perror("signal: SIGSEGV");
 
     if (signal(SIGILL, _critical_stop_handler))
@@ -68,6 +80,9 @@ int main(int argc, const char **argv)
 
     if (signal(SIGBUS, _critical_stop_handler))
         perror("signal: SIGBUS");
+
+    if (signal(SIGFPE, _critical_stop_handler))
+        perror("signal: SIGFPE");
 
     printf("Begin test run %s\n", ctime(&t));
     /* BEGIN TEST REGION */
