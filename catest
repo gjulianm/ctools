@@ -1,5 +1,7 @@
 #!/bin/bash
 
+templatedir="$( dirname "${BASH_SOURCE[0]}" )"/templates
+
 remove_between_tokens() {
 	file=$1
 	token=$2
@@ -16,13 +18,11 @@ append_file() {
 
 init_tests() {
 	mkdir -p tests
-	templatedir="$( dirname "${BASH_SOURCE[0]}" )"/templates	
 	cp "$templatedir/test.c" "$templatedir/testmacros.h" tests
 }
 
 create_suite() {
 	name=$1
-	templatedir="$( dirname "${BASH_SOURCE[0]}" )"/templates
 
 	if [ -z $name ]; then
 		echo "Please set a test suite name."
@@ -52,7 +52,51 @@ create_test() {
 	python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py addtesttosuite tests/test_$suite.c $name
 }
 
+regenerate_testfile() {
+	tests=$( ls tests/ | grep test_ | sed -E 's/test_(.*)\.[ch]/\1/' | uniq )
+	cp "$templatedir/test.c" tests/
 
+	for test in $tests; do 
+		echo "detected $test"
+		python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py addsuitetoglob tests/test.c $test
+	done
+}
+
+regenerate_suite() {
+	suite=$1
+
+	if [ -z $suite ]; then
+		echo "Please set a test suite name."
+		return
+	fi
+
+	python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py regensuite tests/test_$suite.c
+}
+
+mergetest() {
+	dst=$1
+	src=$2
+
+	if [ ! -f $dst ]; then
+		echo "destination file $dst invalid";
+		return;
+	fi
+	if [ ! -f $src ]; then
+		echo "source file $src invalid";
+		return;
+	fi
+
+
+	mv $dst $dst.tmp
+	awk '/#/,/BEGIN TESTS/' $dst.tmp >> $dst
+	awk '/BEGIN TESTS/,/END TESTS/' $src | grep -v "BEGIN TESTS" | grep -v "END TESTS" >> $dst
+	awk '/BEGIN TESTS/,/END TESTS/' $dst.tmp | grep -v "BEGIN TESTS" | grep -v "END TESTS" >> $dst
+	awk '/END TESTS/,0' $dst.tmp >> $dst
+
+	rm $dst.tmp
+		
+	python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py regensuite $dst
+}
 
 save_tests () {
 	base="$( dirname "${BASH_SOURCE[0]}" )"
@@ -79,11 +123,7 @@ upgrade() {
 	templatedir="$( dirname "${BASH_SOURCE[0]}" )"/templates	
 	cp "$templatedir/test.c" "$templatedir/testmacros.h" tests
 
-	for test in $(ls tests/test_*.c); do 
-		name=$(basename $test | sed -e 's/test\_\([a-zA-Z]*\)\.c/\1/g' )
-		echo $name
-		python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py addsuitetoglob tests/test.c $name
-	done
+	regenerate_testfile
 }
 
 help() {
@@ -94,6 +134,9 @@ Available commands:
 	- test <suite> <testname[]>: create various test for the given suite.
 	- save: save the changes made in test files in current directory in the template directory.
 	- upgrade: upgrade the current installation with changes in template directory.
+	- regenerate: regenerate the test.c file with all present tests.
+	- regen-suite <suitename>: regenerate the given suite.
+	- mergetest dst src: merge the tests from dst and src into dst.
 EOF
 }
 
@@ -106,6 +149,9 @@ case "$1" in
 			;;
 	"save") save_tests ;;
 	"upgrade") upgrade ;;
-	*) echo "Unrecognized command."
+	"regenerate") regenerate_testfile ;;
+	"regen-suite") regenerate_suite $2 ;;
+	"mergetest") mergetest $2 $3 ;;
+	*) echo "Unrecognized command $1."
 		help ;;
 esac

@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import sys
+import re
 
 def addsuitetoglob(glob_test_file, suite_name):
 	globtest = open(glob_test_file, "r")
@@ -49,10 +50,39 @@ def addtesttosuite(suite_file, testname):
 
 	suite.close()
 
+def regenerate_suite(suite_file):
+	suite = open(suite_file, "r")
+	suite_contents = suite.readlines()
+	suite_text = ''.join(suite_contents)
+	suite.close()
+	suite = open(suite_file, "w")
+
+	tests=re.findall(r'int (t_[_\w\d]*)\(\)', suite_text)	
+
+	in_test_exec_region = False
+	for line in suite_contents:
+		
+		if in_test_exec_region and "/* END TEST EXEC */" in line:
+			in_test_exec_region = False
+		
+		if not in_test_exec_region:		
+			suite.write(line)
+
+		if "/* BEGIN TEST EXEC */" in line:
+			for test in tests:
+				suite.write("\tmu_run_test({0});\n".format(test))
+
+			in_test_exec_region = True
+
+	suite.close()
+
+
 if sys.argv[1] == "addtesttosuite":
 	addtesttosuite(sys.argv[2], sys.argv[3])
 elif sys.argv[1] == "addsuitetoglob":
 	addsuitetoglob(sys.argv[2], sys.argv[3])
+elif sys.argv[1] == "regensuite":
+	regenerate_suite(sys.argv[2])
 else:
 	print "It wasn't that hard to enter a correct argument, wasn't it?"
 
