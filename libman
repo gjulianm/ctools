@@ -15,32 +15,36 @@ save_lib() {
 
 	libfiles=$( ls srclib/$lname )
 
-	if [ ! -d "$libdir"/$lname ]; then
-		mkdir "$libdir"/$lname
-		cd "$libdir"/$lname
+	if [ ! -d "$libdir/$lname" ]; then
+		echo "init $lname"
+		cwd=$(pwd)
+		mkdir "$libdir/$lname"
+		cd "$libdir/$lname"
 		catest init
+		cd "$cwd"
 	fi
 
 	mkdir -p "$libdir"/$lname/src
 	mkdir -p "$libdir"/$lname/includes
 	mkdir -p "$libdir"/$lname/tests
 
-	cp -v srclib/$lname/* "$libdir"/$lname/src
+	cp -v srclib/$lname/* "$libdir/$lname/src"
 
 	if [ -d includes/$lib ]; then
-		cp -v includes/$lib/* "$libdir"/$lname/includes 
+		cp -v includes/$lib/* "$libdir/$lname/includes" 
 	fi
 
 	headers=$(echo $libfiles | sed -E 's/([a-zA-Z_]*)\.c/includes\/\1\.h/g')
-	cp -v $headers "$libdir"/$lname/includes
+	cp -v $headers "$libdir/$lname/includes"
 
-	ltestdir="$libdir"/$lname/tests
+	ltestdir="$libdir/$lname/tests"
 	tests=$(echo $libfiles | sed -E 's/([a-zA-Z_]*)\.c/tests\/test_\1\.c/g')
 
 	for test in $tests; do
 		if [ -f "$libdir"/$lname/$test ]; then
 			echo "merging $test"
-			catest mergetest "$libdir/$lname/$test" $test
+			catest mergetest 
+			"$libdir/$lname/$test" $test
 		else
 			cp -v "$test" "$libdir/$lname/$test"
 		fi
