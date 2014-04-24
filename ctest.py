@@ -15,7 +15,7 @@ def addsuitetoglob(glob_test_file, suite_name):
 
 	for line in globtest_contents:
 		if in_test_region:
-			globtest.write("\tif(include_test(\"{0}\", argc, argv))\n\t\trun += test_{0}_suite(&error, &success);\n".format(suite_name))
+			globtest.write("\tif(include_test(\"{0}\", argc, spec_start))\n\t\trun += test_{0}_suite(&error, &success);\n".format(suite_name))
 			in_test_region = False
 		globtest.write(line)
 
