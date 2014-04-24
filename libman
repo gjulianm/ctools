@@ -43,8 +43,7 @@ save_lib() {
 	for test in $tests; do
 		if [ -f "$libdir"/$lname/$test ]; then
 			echo "merging $test"
-			catest mergetest 
-			"$libdir/$lname/$test" $test
+			catest mergetest "$libdir/$lname/$test" $test
 		else
 			cp -v "$test" "$libdir/$lname/$test"
 		fi
@@ -102,6 +101,16 @@ copy_lib() {
     	    No ) return;;
     	esac
 	done
+}
+
+help() {
+	cat << EOF
+Available commands:
+	- save <libname>
+		Save a library in the directory.
+	- copy <libname>
+		Install a library in the directory.
+EOF
 }
 
 case "$1" in
