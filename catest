@@ -19,6 +19,7 @@ append_file() {
 init_tests() {
 	mkdir -p tests
 	cp "$templatedir/test.c" "$templatedir/testmacros.h" tests
+	cp "$templatedir/termcolor.h" includes
 }
 
 create_suite() {

@@ -1,5 +1,4 @@
 #include "termcolor.h"
-#include "log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,8 +60,9 @@ int main(int argc, const char **argv)
     time_t t;
     int success = 0, error = 0, run = 0;
     time(&t);
-    const char **spec_start = argv + 1;
 
+#ifdef SLOG_DEFINED
+    const char **spec_start = argv + 1;
     if(argc >= 2 && !strncasecmp("-v", argv[1], 2))
     {
         slog_set_level(LOG_DEBUG);
@@ -71,6 +71,7 @@ int main(int argc, const char **argv)
     }
     
     slog_set_output(stderr);
+#endif
 
     if (signal(SIGSEGV, _critical_stop_handler))
         perror("signal: SIGSEGV");
