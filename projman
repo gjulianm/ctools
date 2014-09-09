@@ -1,0 +1,54 @@
+#!/bin/bash
+
+proj_folders="src doc includes tests"
+scr_dir="$( dirname "${BASH_SOURCE[0]}" )"
+
+function init()
+{
+	projname=$1
+	[ -z $projname ] && (echo "Project name not present"; exit 1)
+
+	mkdir $projname
+	cd $projname
+	mkdir $proj_folders
+	echo "Created folder structure for project $projname"
+
+	cp "$scr_dir/makefiles/Makefile" ./
+	sed -i .sed "s/__project_name__/$projname/g" Makefile
+	echo "Created Makefile"
+
+	cat << EOF >> src/$projname.c
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, const char** argv)
+{
+	printf("Hello World!\n");
+	return 0;
+}
+EOF
+	echo "Generated initial file."
+
+	catest init
+	echo "Initialized test structure."
+
+	git init
+	echo "Created git repo."
+
+	rm *.sed
+}
+
+function makefile_plugin_add()
+{
+	plugin_name=$1
+	[ -z $plugin_name ] && (echo "Plugin name not present"; exit 1)
+
+	plugin_fname="Makefile-$plugin_name.mk"
+	plugin_path="$scr_dir/makefiles/$plugin_fname"
+
+	[ -f "$plugin_path" ] || (echo "Makefile plugin $plugin_fname not present in $plugin_path"; exit 1)
+
+	sed -i .sed "s/### Makefile plugins/### Makefile plugins\ninclude $plugin_fname/g" Makefile
+}
+
+init $@
