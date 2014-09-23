@@ -1,19 +1,36 @@
-CC = gcc
-CFLAGS = -Wall -pedantic -std=c99 -D_GNU_SOURCE
-DEBUG_CFLAGS = -ggdb -DDEBUG -ftrapv
-EXTRAOPT_CFLAGS = -funsafe-loop-optimizations -Wunsafe-loop-optimizations \
-				  -floop-interchange -floop-block -ftracer -funroll-loops -flto \
-				  -ffast-math -fno-trapping-math -freciprocal-math
-RELEASE_CFLAGS = -O3 
-BENCHMARK_CFLAGS = $(RELEASE_CFLAGS) -DBENCHMARK
-PROFILE_CFLAGS = $(RELEASE_CFLAGS) -pg -static-libgcc
-E_LIBS = 
+# Generic Makefile
+# Supports
+#  - Automatic dependency detection for source and libraries.
+#  - Multiple configurations.
+#  - Library compilation (static and dynamic linking).
 
+CC = gcc
+CFLAGS = -Wall -D_GNU_SOURCE
+DEBUG_CFLAGS = -ggdb -DDEBUG -ftrapv 
+RELEASE_CFLAGS = -O3 
+PROFILE_CFLAGS = $(RELEASE_CFLAGS) -pg -static-libgcc
+
+# External libraries used and (optional) their paths if the compiler
+# 	doesn't recognize them.
+EXTERNAL_LIBS = 
+LIBRARY_PATHS = /opt/local/lib
+
+# Project name, just for packing and some automated target guesses.
 PROJECT_NAME = __project_name__
 
-CONFS = debug release benchmark profile
+# Each target will be compiled as a binary in bin/targetname, using
+#	src/targetname.c as main file. src/targetname.c will not be included
+#	in other binaries.
+TARGETS = $(PROJECT_NAME)
+
+CONFS = debug release
 DEFAULT_CONF = release
 
+TAR_EXCLUDES = bin obj doc .tar.gz .git tasks \
+		cscope.out $(PROJECT_NAME).sublime-project $(PROJECT_NAME).sublime-workspace \
+		*.dat callgrind.* gmon.out
+
+## Folder structure
 OBJDIR = obj
 SRCDIR = src
 INCDIR = includes
@@ -23,8 +40,10 @@ LIBDIR = lib
 LIBSRCDIR = srclib
 TESTDIR = tests
 
-TARGETS = $(PROJECT_NAME) 
+# Header files include path
 INCLUDES = -I./includes/
+
+#### Internal variables ####
 
 INCS := $(wildcard $(INCDIR)/*.h)
 SRCS := $(wildcard $(SRCDIR)/*.c)
@@ -34,14 +53,18 @@ LIB_SRCS := $(wildcard $(LIBSRCDIR)/**/*.c)
 LIB_OBJS := $(addprefix $(OBJDIR)/, $(patsubst %.c,%.o, $(LIB_SRCS)))
 LIB_NAMES := $(patsubst $(LIBSRCDIR)/%, %, $(wildcard $(LIBSRCDIR)/*))
 LIBS :=	$(addsuffix .a, $(LIB_NAMES))
+LIBS +=	$(addsuffix .so, $(LIB_NAMES))
 LIB_DEPS := $(addsuffix .deps, $(addprefix $(OBJDIR)/., $(LIB_NAMES)))
 LIB_OBJDIRS := $(foreach conf, $(CONFS), $(addprefix $(OBJDIR)/$(conf)/$(LIBSRCDIR)/, $(LIB_NAMES)))
 LIB_OUTDIRS := $(addprefix $(LIBDIR)/, $(CONFS))
+E_LIBS := $(EXTERNAL_LIBS)
+E_LIBS += $(addprefix -L, $(LIBRARY_PATHS))
 
 TEST_SRCS := $(wildcard $(TESTDIR)/*.c)
 TEST_OBJS := $(patsubst %.c,%.o, $(TEST_SRCS))
 OBJS_NOMAIN := $(filter-out $(addprefix %/, $(addsuffix .o, $(TARGETS))), $(OBJS))
 
+# Documentation targets
 DOC_TEXS := $(wildcard $(DOCDIR)/*.tex)
 DOC_TEXS += $(DOCDIR)/latex/refman.tex
 DOC_PDFS := $(patsubst %.tex, %.pdf, $(DOC_TEXS))
@@ -51,9 +74,6 @@ DOXY_OUTPUTS := $(filter-out $(DOCDIR)/, $(dir $(wildcard $(DOCDIR)/*/)))
 FMT_BOLD := $(shell tput bold)
 FMT_NORM := $(shell tput sgr0)
 
-TAR_EXCLUDES = bin obj doc .tar.gz .git tasks \
-		cscope.out $(PROJECT_NAME).sublime-project $(PROJECT_NAME).sublime-workspace \
-		*.dat callgrind.* gmon.out
 TAR_EXCLUDES_ARG = $(addprefix --exclude=, $(TAR_EXCLUDES))
 
 ### Makefile plugins
@@ -64,27 +84,32 @@ TAR_EXCLUDES_ARG = $(addprefix --exclude=, $(TAR_EXCLUDES))
 .PHONY: benchmark clean pack doxydoc docclean benchmark-run configs $(TARGETS)
  
 all: release test
-
+libs: $(LIBS)
 final: all docs pack
 
-### Compilation
+#### Makefile rules ####
 
-$(CONFS): configs
+### Misc. rules ###
 
+# Generate configuration data file
+$(CONFS): configs 
+
+# Output current CFLAGS to file flags.dat
 flags.dat: Makefile
-	@echo $(CFLAGS) $(BENCH_CFLAGS) > $@
+	@echo $(CFLAGS) > $@
 
+# Clang static analyzer
 scan: clean
 	@scan-build make debug
 
+# Test target
 test: $(BINDIR)/debug/test $(TEST_DEPS)
 	
-$(OBJS): | $(OBJDIR)
-
-## Dependencies
+#### Automated dependency detection #### 
 
 depend: $(OBJDIR)/.deps $(OBJDIR)/.test.deps $(LIB_DEPS) 
 
+# Dependency detection for source files
 $(OBJDIR)/.deps: $(SRCS) Makefile | $(OBJDIR)
 	@-rm -f $(OBJDIR)/.deps
 	@$(CC) $(CFLAGS) $(INCLUDES) -MM $(filter-out Makefile, $^) >> $(OBJDIR)/.deps;
@@ -95,6 +120,8 @@ $(OBJDIR)/.deps: $(SRCS) Makefile | $(OBJDIR)
 	done
 	@mv "$@.0" $@
 
+# Dependency detection for test files. It's more or less the same code that before,
+# 	but we have to account for special test directories.
 $(OBJDIR)/.test.deps: $(TEST_SRCS) Makefile | $(OBJDIR)
 	@-rm -f $@
 	@$(CC) $(CFLAGS) $(INCLUDES) -MM $(filter-out Makefile, $^) >> $@;
@@ -105,6 +132,8 @@ $(OBJDIR)/.test.deps: $(TEST_SRCS) Makefile | $(OBJDIR)
 	done
 	@mv "$@.0" $@
 
+# Library dependency detection.
+#  Generates automatically dependences for the *.a and *.so files.
 $(OBJDIR)/.%.deps: $(LIBSRCDIR)/%/*.c Makefile | $(OBJDIR)
 	@-rm -f $@
 	@$(CC) $(CFLAGS) $(INCLUDES) -MM $(filter-out Makefile, $^) >> $@;
@@ -112,10 +141,18 @@ $(OBJDIR)/.%.deps: $(LIBSRCDIR)/%/*.c Makefile | $(OBJDIR)
 	@mv "$@.0" $@
 	@for c in $(CONFS); do \
 		awk '{printf("$(OBJDIR)/%s/$(LIBSRCDIR)/$*/%s | $(LIBDIR)\n", conf, $$0)}' conf=$$c $@ >> "$@.0"; \
-		echo "$(LIBDIR)/$$c/$*.a: $(patsubst %.c, $(OBJDIR)/$$c/%.o, $^)" >> "$@.0"; \
+		echo "$(LIBDIR)/$$c/$*.a: $(patsubst %.c, $(OBJDIR)/$$c/%.o, $(filter-out Makefile, $^))" >> "$@.0"; \
+		echo "$(LIBDIR)/$$c/$*.so: $(patsubst %.c, $(OBJDIR)/$$c/%.o, $(filter-out Makefile, $^))" >> "$@.0"; \
 	done
 	@mv "$@.0" $@
+	@echo "$*.a: $(LIBDIR)/$(DEFAULT_CONF)/$*.a" >> $@
+	@echo "$*.so: $(LIBDIR)/$(DEFAULT_CONF)/$*.so" >> $@
 
+-include $(OBJDIR)/.deps
+-include $(OBJDIR)/.test.deps
+-include $(LIB_DEPS)
+
+#### Configuration flag creation and detection ####
 configs: $(OBJDIR)/.conf_flags.mk
 
 $(OBJDIR)/.conf_flags.mk: Makefile | $(OBJDIR)
@@ -137,13 +174,11 @@ $(OBJDIR)/.conf_flags.mk: Makefile | $(OBJDIR)
 		echo "$$t: $(BINDIR)/$(DEFAULT_CONF)/$$t" >> $@; \
 	done
 
-
 -include $(OBJDIR)/.conf_flags.mk
--include $(OBJDIR)/.deps
--include $(OBJDIR)/.test.deps
--include $(LIB_DEPS)
 
-## Directories
+#### Directory creation ####
+
+$(OBJS): | $(OBJDIR)
 
 $(OBJDIR): Makefile
 	@for c in $(CONFS); do \
@@ -152,9 +187,6 @@ $(OBJDIR): Makefile
 		mkdir -p $(OBJDIR)/$$c/$(LIBSRCDIR); \
 		mkdir -p $(OBJDIR)/$$c/$(TESTDIR); \
 	done 
-
-$(PCAP_DIR):
-	@mkdir -p $@
 
 $(BINDIR): Makefile
 	@echo "$(FMT_BOLD)Creating bin directory$(FMT_NORM)"
@@ -180,25 +212,30 @@ resultclean:
 	@echo "$(FMT_BOLD)Removing result...$(FMT_NORM)"
 	@-rm -rf *.dat *.g *.gdat *.png
 
-## Libraries
+#### Compilation rules #### 
 
+# Static library
 $(LIBDIR)/%.a: | $(LIBDIR)
 	@echo "$(FMT_BOLD)Building library $(notdir $@)... $(FMT_NORM)"
-	@$(AR) -r $@ $^
+	@$(AR) -rv $@ $^
 
-## Compilation
+# Dynamic library
+$(LIBDIR)/%.so: | $(LIBDIR)
+	@echo "$(FMT_BOLD)Building library $(notdir $@)... $(FMT_NORM)"
+	@$(CC) $(CFLAGS) -shared $^ $(E_LIBS) -o $@ 
 
+# Objects
 $(OBJDIR)/%.o: | $(OBJDIR) depend configs
 	@echo "$< -> $@"
 	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-## Executable
-
+# Executables
 $(BINDIR)/%: | $(BINDIR) depend configs 
 	@echo "$(FMT_BOLD)Building final target: $* $(FMT_NORM)"
 	@$(CC) $(CFLAGS) $(INCLUDES) $^ $(E_LIBS) -o $@ 
 
-## Documentation
+
+#### Documentation ####
 
 docs: doxydoc $(DOC_PDFS)
 
@@ -221,8 +258,8 @@ docclean:
 	@echo "$(FMT_BOLD)Removing doxygen output...$(FMT_NORM)"
 	@[ -z "$(DOXY_OUTPUTS)" ] || rm -r $(DOXY_OUTPUTS)
 
-	
-## Packing
+
+#### Packing ####
 
 pack: $(DOC_PDFS) codeclean
 	@cd ..; tar $(TAR_EXCLUDES_ARG) -czf $(PROJECT_NAME).tar.gz $(lastword $(notdir $(CURDIR)))
