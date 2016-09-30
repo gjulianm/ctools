@@ -1,64 +1,7 @@
 #!/bin/bash
 
-group=2301
-pair=11
-authors="Víctor de Juan, Guillermo Julián"
-
 toupper() {
 	echo $name | tr '[:lower:]' '[:upper:]'
-}
-
-get_pracname() {
-	echo G-$group-$pair-P$1
-}
-
-create_prac_dir() {
-	if [ -z $1 ]; then
-		echo "We need another argument: number."
-		return
-	fi
-	pracnum=$1
-	dirname=$(get_pracname $pracnum)
-
-	mkdir $dirname
-	cd $dirname
-
-	cp "$( dirname "${BASH_SOURCE[0]}" )"/Makefile ./
-
-	mkdir src srclib includes lib doc 
-	
-	cat << EOF > doc/$dirname-doc.tex
-\\documentclass\[nochap\]\{apuntes\}
-
-\\title\{ $dirname \}
-\\author\{ $authors \}
-\\date\{ $(date "+%Y, %B %d") \}
-
-\\begin\{document\}
-
-\\maketitle\\newpage
-
-\\pagestyle\{plain\}
-
-\\end\{document\}
-EOF
-	cat << EOF > $dirname.sublime-project
-{
-	"folders":
-	[
-		{
-			"path": "."
-		}
-	],
-	"settings": 
-	{
-		"sublimeclang_options":
-    	[
-    		"-I\${folder:\${project_path:$dirname.sublime-project}}/includes"
-    	]
-	}
-}
-EOF
 }
 
 create_header() {
@@ -73,7 +16,7 @@ create_header() {
 #ifdef $guard
 #define $guard
 
-#endif /* $guard */c
+#endif /* $guard */
 EOF
 }
 
@@ -105,7 +48,7 @@ generate_file() {
 
 	echo -e $funcs_c > src/$name.c
 	echo -e $funcs_h > includes/$name.h
-	echo 
+	echo
 	echo "Created src/$name.c and includes/$name.h"
 }
 
@@ -117,6 +60,28 @@ create_lib() {
 	fi
 
 	mkdir srclib/lib$1
+}
+
+create_headersrc_cpp() {
+	if [ -z $1 ]; then
+		echo "We need a name!"
+		return
+	fi
+
+	name="$1"
+
+	guard=$(toupper $name)_HPP
+
+	cat << EOF > includes/$name.hpp
+#ifndef $guard
+#define $guard
+
+#endif /* $guard */
+EOF
+	echo "Created includes/$name.hpp"
+
+	echo "#include \"$name.hpp\"" > src/$name.cpp
+	echo "Created src/$name.cpp"
 }
 
 case $1 in
@@ -131,6 +96,9 @@ case $1 in
 		;;
 	"lib")
 		create_lib $2
+		;;
+	"hs++")
+		create_headersrc_cpp $2
 		;;
 	*)
 		cat << EOF
