@@ -33,9 +33,9 @@ def addtesttosuite(suite_file, testname):
 	in_test_region = False
 	in_test_exec_region = False
 
-	for line in suite_contents:	
+	for line in suite_contents:
 		if in_test_region:
-			suite.write("int t_{0}() {{\n\n\tmu_fail(\"Not implemented\");\n\tmu_end;\n}}\n".format(testname))
+			suite.write("static int t_{0}() {{\n\n\tmu_fail(\"Not implemented\");\n\tmu_end;\n}}\n".format(testname))
 			in_test_region = False
 		elif in_test_exec_region:
 			suite.write("\tmu_run_test(t_{0});\n".format(testname))
@@ -57,15 +57,15 @@ def regenerate_suite(suite_file):
 	suite.close()
 	suite = open(suite_file, "w")
 
-	tests=re.findall(r'int (t_[_\w\d]*)\(\)', suite_text)	
+	tests=re.findall(r'int (t_[_\w\d]*)\(\)', suite_text)
 
 	in_test_exec_region = False
 	for line in suite_contents:
-		
+
 		if in_test_exec_region and "/* END TEST EXEC */" in line:
 			in_test_exec_region = False
-		
-		if not in_test_exec_region:		
+
+		if not in_test_exec_region:
 			suite.write(line)
 
 		if "/* BEGIN TEST EXEC */" in line:
