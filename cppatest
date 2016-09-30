@@ -1,0 +1,158 @@
+#!/bin/bash
+
+templatedir="$( dirname "${BASH_SOURCE[0]}" )"/templates
+
+remove_between_tokens() {
+	file=$1
+	token=$2
+	token_begin="\/\* BEGIN $token \*\/"
+	token_end="\/\* END $token \*\/"
+
+	sed -n -e "/$token_begin/{" -e 'p' -e ':a' -e 'N' -e "/$token_end/!ba" -e 's/.*\n//' -e '}' -e 'p' "$file" > "$file.sed"
+	mv "$file.sed" "$file"
+}
+
+append_file() {
+	echo $2 | cat - $1 > $1.temp && mv $1.temp $1
+}
+
+init_tests() {
+	mkdir -p tests
+	cp "$templatedir/test.cpp" "$templatedir/testmacros.h" tests
+	cp "$templatedir/termcolor.h" includes
+}
+
+create_suite() {
+	name=$1
+
+	if [ -z $name ]; then
+		echo "Please set a test suite name."
+		return
+	fi
+
+	cp "$templatedir/testsuite.h" tests/test_$name.h
+	cp "$templatedir/testsuite.c" tests/test_$name.cpp
+
+	sed -i -sbc "s/_testsuite_/test_$name/g"  tests/test_$name.h
+	sed -i -sbc "s/_testsuite_/test_$name/g"  tests/test_$name.cpp
+
+	rm tests/test_$name.h-sbc tests/test_$name.cpp-sbc
+
+	python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py addsuitetoglob tests/test.cpp $name
+}
+
+create_test() {
+	name=$2
+	suite=$1
+
+	if [ -z $name ] || [ -z $suite ]; then
+		echo "Please set a test name and corresponding suite."
+		return
+	fi
+
+	python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py addtesttosuite tests/test_$suite.cpp $name
+}
+
+regenerate_testfile() {
+	tests=$( ls tests/ | grep test_ | sed -E 's/test_(.*)\.[ch]/\1/' | uniq )
+	cp "$templatedir/test.cpp" tests/
+
+	for test in $tests; do
+		echo "detected $test"
+		python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py addsuitetoglob tests/test.cpp $test
+	done
+}
+
+regenerate_suite() {
+	suite=$1
+
+	if [ -z $suite ]; then
+		echo "Please set a test suite name."
+		return
+	fi
+
+	python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py regensuite tests/test_$suite.cpp
+}
+
+mergetest() {
+	dst=$1
+	src=$2
+
+	if [ ! -f $dst ]; then
+		echo "destination file $dst invalid";
+		return;
+	fi
+	if [ ! -f $src ]; then
+		echo "source file $src invalid";
+		return;
+	fi
+
+
+	mv $dst $dst.tmp
+	awk '/#/,/BEGIN TESTS/' $dst.tmp >> $dst
+	awk '/BEGIN TESTS/,/END TESTS/' $src | grep -v "BEGIN TESTS" | grep -v "END TESTS" >> $dst
+	awk '/BEGIN TESTS/,/END TESTS/' $dst.tmp | grep -v "BEGIN TESTS" | grep -v "END TESTS" >> $dst
+	awk '/END TESTS/,0' $dst.tmp >> $dst
+
+	rm $dst.tmp
+
+	python "$( dirname "${BASH_SOURCE[0]}" )"/ctest.py regensuite $dst
+}
+
+save_tests () {
+	base="$( dirname "${BASH_SOURCE[0]}" )"
+	cp tests/test.cpp "$base/templates"
+	remove_between_tokens "$base/templates/test.cpp" "TEST REGION"
+	sed -i .sed '/#include "test_.*"/d' "$base/templates/test.cpp"
+	rm "$base/templates/test.cpp.sed"
+
+	cp tests/testmacros.h "$base/templates/"
+
+	test_file_sample=$(ls tests/test_*.cpp | head -n 1)
+	test_file_name=$(basename $test_file_sample | sed 's/\.cpp//' )
+	echo $test_file_sample
+	echo $test_file_name
+	cp $test_file_sample "$base/templates/testsuite.cpp"
+	sed -i .sed "s/$test_file_name/\_testsuite\_/g" "$base/templates/testsuite.cpp"
+	rm "$base/templates/testsuite.cpp.sed"
+
+	remove_between_tokens "$base/templates/testsuite.cpp" "TEST EXEC"
+	remove_between_tokens "$base/templates/testsuite.cpp" "TESTS"
+}
+
+upgrade() {
+	templatedir="$( dirname "${BASH_SOURCE[0]}" )"/templates
+	cp "$templatedir/test.cpp" "$templatedir/testmacros.h" tests
+
+	regenerate_testfile
+}
+
+help() {
+	cat << EOF
+Available commands:
+	- init: initialize folder and test structure.
+	- suite <suitename>: create a test suite with the given name.
+	- test <suite> <testname[]>: create various test for the given suite.
+	- save: save the changes made in test files in current directory in the template directory.
+	- upgrade: upgrade the current installation with changes in template directory.
+	- regenerate: regenerate the test.cpp file with all present tests.
+	- regen-suite <suitename>: regenerate the given suite.
+	- mergetest dst src: merge the tests from dst and src into dst.
+EOF
+}
+
+case "$1" in
+	"init") init_tests ;;
+	"suite") create_suite $2 ;;
+	"test") for t in ${@:3}; do
+				create_test $2 $t
+			done
+			;;
+	"save") save_tests ;;
+	"upgrade") upgrade ;;
+	"regenerate") regenerate_testfile ;;
+	"regen-suite") regenerate_suite $2 ;;
+	"mergetest") mergetest $2 $3 ;;
+	*) echo "Unrecognized command $1."
+		help ;;
+esac
