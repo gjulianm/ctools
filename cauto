@@ -104,6 +104,7 @@ case $1 in
 		cat << EOF
 Available commands.
 	-header <name>: Create a header file.
+	-hs++ <name>: Create a header file (C++).
 	-file <name>: create file and header.
 	-newprac <name>: create prac dir.
 	-lib <name>: create a new library in the directory
